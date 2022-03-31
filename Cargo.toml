@@ -1,0 +1,23 @@
+[package]
+name = "news_observer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Evgeny Mangasaryan <mangasaryan.ep@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+eframe = "0.17.0"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = []
+persistence = ["eframe/persistence", "serde"] # Enable if you want to persist app state on shutdown
+
+[profile.release]
+opt-level = 2
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6"
+tracing-wasm = "0.2"
