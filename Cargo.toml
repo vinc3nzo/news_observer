@@ -1,6 +1,6 @@
 [package]
 name = "news_observer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Evgeny Mangasaryan <mangasaryan.ep@gmail.com>"]
 
@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 eframe = "0.17.0"
 serde = { version = "1", features = ["derive"], optional = true }
+reqwest = "0.11.10"
 
 [features]
 default = []
