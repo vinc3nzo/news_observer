@@ -4,9 +4,6 @@ version = "0.2.0"
 edition = "2021"
 authors = ["Evgeny Mangasaryan <mangasaryan.ep@gmail.com>"]
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [dependencies]
 eframe = "0.17.0"
 serde = { version = "1", features = ["derive"], optional = true }
