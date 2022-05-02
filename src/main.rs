@@ -8,23 +8,43 @@ use eframe::egui::*;
 
 const FOOTER_PADDING: f32 = 5.0;
 const HEADING_PADDING: f32 = 10.0;
+const CONTROLS_PADDING: f32 = 2.5;
 const NEWSCARD_PADDING: f32 = 5.0;
-const TITLE_COLOR: Color32 = Color32::from_rgb(255, 255, 255);
-const READ_MORE_COLOR: Color32 = Color32::from_rgb(0, 255, 30);
+const NEWSCARD_DARK_TITLE_COLOR: Color32 = Color32::from_rgb(255, 255, 255);
+const NEWSCARD_LIGHT_TITLE_COLOR: Color32 = Color32::from_rgb(10, 10, 10);
+const DARK_HYPERLINK_COLOR: Color32 = Color32::from_rgb(0, 255, 30);
+const LIGHT_HYPERLINK_COLOR: Color32 = Color32::from_rgb(0, 0, 200);
 const DEFAULT_FONT_SIZE: f32 = 18.0;
-const HEADING_FONT_SIZE: f32 = 32.0;
+const HEADING_FONT_SIZE: f32 = 28.0;
 const SMALL_FONT_SIZE: f32 = 14.0;
 const READ_MORE_SIZE: f32 = 14.0;
 const DESCRIPTION_SIZE: f32 = 16.0;
+const CONTROL_BUTTON_SIZE: f32 = 22.0;
 
-pub struct Headline {
+struct Headline {
     title: String,
     link: String,
     description: String,
 }
 
-pub struct NewsObserverApp {
+struct NewsObserverApp {
     headlines: Vec<Headline>,
+    config: ApplicationConfig,
+    light_visuals: Visuals,
+    dark_visuals: Visuals,
+    newscard_title_color: Color32,
+}
+
+struct ApplicationConfig {
+    dark_theme: bool,
+}
+
+impl ApplicationConfig {
+    fn new() -> Self {
+        Self {
+            dark_theme: true
+        }
+    }
 }
 
 impl Default for NewsObserverApp {
@@ -35,8 +55,17 @@ impl Default for NewsObserverApp {
             description: format!("description_{}", a),
         });
 
+        let mut light_visuals = Visuals::light();
+        light_visuals.hyperlink_color = LIGHT_HYPERLINK_COLOR;
+        let mut dark_visuals = Visuals::dark();
+        dark_visuals.hyperlink_color = DARK_HYPERLINK_COLOR;
+
         Self {
             headlines: Vec::from_iter(iter),
+            config: ApplicationConfig::new(),
+            light_visuals,
+            dark_visuals,
+            newscard_title_color: NEWSCARD_DARK_TITLE_COLOR,
         }
     }
 }
@@ -53,16 +82,45 @@ impl NewsObserverApp {
         app_style.text_styles.insert(TextStyle::Small, FontId::proportional(SMALL_FONT_SIZE));
         app_style.text_styles.insert(TextStyle::Body, FontId::proportional(DEFAULT_FONT_SIZE));
         app_style.text_styles.insert(TextStyle::Heading, FontId::proportional(HEADING_FONT_SIZE));
-        app_style.visuals.hyperlink_color = READ_MORE_COLOR;
 
         ctx.set_fonts(font_definition);
         ctx.set_style(app_style);
     }
 
+    fn parse_unicode(&self, input: &str) -> Option<char> {
+        let unicode = u32::from_str_radix(input, 16).ok()?;
+        char::from_u32(unicode)
+    }
+
+    fn render_controls(&mut self, ctx: &Context) {
+        TopBottomPanel::top("controls").show(ctx, |ui| {
+            ui.add_space(CONTROLS_PADDING);
+            menu::bar(ui, |ui| {
+                ui.with_layout(Layout::left_to_right(), |ui| {
+                    let refresh_button = ui.button(
+                        RichText::new(self.parse_unicode("21ba").unwrap())
+                            .size(CONTROL_BUTTON_SIZE - 2.0));
+                });
+                ui.with_layout(Layout::right_to_left(), |ui| {
+                    let theme_button = ui.button(
+                        RichText::new(self.parse_unicode(
+                            if self.config.dark_theme { "2600" }
+                            else { "1f318" }
+                        ).unwrap())
+                            .size(CONTROL_BUTTON_SIZE));
+                    if theme_button.clicked() {
+                        self.config.dark_theme = !self.config.dark_theme;
+                    }
+                });
+            });
+            ui.add_space(CONTROLS_PADDING);
+        });
+    }
+
     fn render_news_cards(&self, ui: &mut Ui) {
         for a in &self.headlines {
             ui.add_space(NEWSCARD_PADDING);
-            ui.colored_label(TITLE_COLOR, format!("▶ {}", a.title));
+            ui.colored_label(self.newscard_title_color, format!("▶ {}", a.title));
             ui.add_space(NEWSCARD_PADDING);
             ui.label(RichText::new(&a.description).size(DESCRIPTION_SIZE));
             ui.add_space(NEWSCARD_PADDING);
@@ -84,21 +142,23 @@ impl NewsObserverApp {
     }
 
     fn render_footer(&self, ui: &mut Ui) {
-        ui.vertical_centered(|ui| {
+        ui.vertical_centered_justified(|ui| {
             ui.add_space(FOOTER_PADDING);
             ui.label(
                 RichText::new(
-                    "This is a \"pet application\" created by me to complete a particular university assignment. ".to_owned() +
+                    "This is a so-called \"pet application\" created by me to complete a particular university assignment. ".to_owned() +
                         "Do note though, that the idea behind this application is not entirely mine. " +
                         "It is based on a creativcoder's sample Rust GUI project for his YouTube series and has some " +
                         "major code improvements made by me.")
                     .small());
+            ui.add_space(FOOTER_PADDING);
             ui.hyperlink_to(RichText::new("The news are provided by the News API.").size(READ_MORE_SIZE),
                             "https://newsapi.org");
             ui.hyperlink_to(RichText::new("The GUI was made using the eframe Rust crate.").size(READ_MORE_SIZE),
                             "https://github.com/emilk/egui/tree/master/eframe");
             ui.hyperlink_to(RichText::new("Sources are available at GitHub.").size(READ_MORE_SIZE),
                             "https://github.com/vinc3nzo/news_observer");
+            ui.add_space(FOOTER_PADDING);
             warn_if_debug_build(ui);
         });
     }
@@ -117,6 +177,15 @@ impl epi::App for NewsObserverApp {
     }
 
     fn update(&mut self, ctx: &Context, _frame: &epi::Frame) {
+        if self.config.dark_theme {
+            ctx.set_visuals(self.dark_visuals.to_owned());
+            self.newscard_title_color = NEWSCARD_DARK_TITLE_COLOR;
+        } else {
+            ctx.set_visuals(self.light_visuals.to_owned());
+            self.newscard_title_color = NEWSCARD_LIGHT_TITLE_COLOR;
+        }
+
+        self.render_controls(ctx);
         CentralPanel::default().show(ctx, |ui| {
             self.render_header(ui);
             ScrollArea::both().show(ui, |ui| {
