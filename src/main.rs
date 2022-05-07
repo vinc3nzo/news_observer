@@ -2,9 +2,15 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))] // warning as errors in release build
 #![warn(clippy::all, rust_2018_idioms)]
 
-use eframe::NativeOptions;
+use eframe::{egui, NativeOptions};
 use eframe::epi;
 use eframe::egui::*;
+use serde::{Serialize, Deserialize};
+use confy;
+use tracing_subscriber;
+use tracing;
+
+const APPLICATION_NAME: &str = "news_observer";
 
 const FOOTER_PADDING: f32 = 5.0;
 const HEADING_PADDING: f32 = 10.0;
@@ -35,14 +41,19 @@ struct NewsObserverApp {
     newscard_title_color: Color32,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 struct ApplicationConfig {
     dark_theme: bool,
+    api_key: String,
+    show_config_window: bool,
 }
 
-impl ApplicationConfig {
-    fn new() -> Self {
+impl Default for ApplicationConfig {
+    fn default() -> Self {
         Self {
-            dark_theme: true
+            dark_theme: true,
+            api_key: String::new(),
+            show_config_window: false
         }
     }
 }
@@ -62,7 +73,7 @@ impl Default for NewsObserverApp {
 
         Self {
             headlines: Vec::from_iter(iter),
-            config: ApplicationConfig::new(),
+            config: confy::load(APPLICATION_NAME).unwrap_or_default(),
             light_visuals,
             dark_visuals,
             newscard_title_color: NEWSCARD_DARK_TITLE_COLOR,
@@ -97,9 +108,16 @@ impl NewsObserverApp {
             ui.add_space(CONTROLS_PADDING);
             menu::bar(ui, |ui| {
                 ui.with_layout(Layout::left_to_right(), |ui| {
-                    let refresh_button = ui.button(
+                    let _refresh_button = ui.button(
                         RichText::new(self.parse_unicode("21ba").unwrap())
                             .size(CONTROL_BUTTON_SIZE - 2.0));
+                    let configure_button = ui.button(
+                        RichText::new(self.parse_unicode("1f527").unwrap())
+                            .size(CONTROL_BUTTON_SIZE)
+                    );
+                    if configure_button.clicked() {
+                        self.config.show_config_window = !self.config.show_config_window;
+                    }
                 });
                 ui.with_layout(Layout::right_to_left(), |ui| {
                     let theme_button = ui.button(
@@ -110,6 +128,11 @@ impl NewsObserverApp {
                             .size(CONTROL_BUTTON_SIZE));
                     if theme_button.clicked() {
                         self.config.dark_theme = !self.config.dark_theme;
+                        if let Err(e) = confy::store(APPLICATION_NAME, self.config.to_owned()) {
+                            tracing::error!("Failed to save config onto the disk: {}", e);
+                        } else {
+                            tracing::info!("Successfully saved application config onto the disk");
+                        }
                     }
                 });
             });
@@ -162,18 +185,56 @@ impl NewsObserverApp {
             warn_if_debug_build(ui);
         });
     }
+
+    fn render_config_window(&mut self, ctx: &Context) {
+        Window::new("Configuration")
+            .collapsible(false).show(ctx, |ui| {
+            TopBottomPanel::top("config_controls").show(ctx, |ui| {
+                menu::bar(ui, |ui| {
+                    ui.with_layout(Layout::right_to_left(), |ui| {
+                        let close_button = ui.button(
+                            RichText::new(self.parse_unicode("274c").unwrap())
+                                .size(CONTROL_BUTTON_SIZE)
+                        );
+                        if close_button.clicked() {
+                            self.config.show_config_window = false;
+                        }
+                        let reset_button = ui.button(
+                            RichText::new(self.parse_unicode("21ba").unwrap())
+                                .size(CONTROL_BUTTON_SIZE)
+                        );
+                        if reset_button.clicked() {
+                            self.config.api_key = confy::load::<ApplicationConfig>(APPLICATION_NAME)
+                                .unwrap_or_default()
+                                .api_key;
+                        }
+                    });
+                });
+            });
+            ui.vertical_centered(|ui| {
+                ui.label("Enter your key for the News API and press Enter:");
+                let key_input = ui.text_edit_singleline(&mut self.config.api_key);
+                if key_input.lost_focus() && ui.input().key_pressed(egui::Key::Enter) {
+                    if let Err(e) = confy::store(APPLICATION_NAME, self.config.to_owned()) {
+                        tracing::error!("Failed to write the config onto the disk: {}", e);
+                    } else {
+                        tracing::info!("Successfully wrote config onto the disk");
+                    }
+                }
+                ui.label("If you don't have it, you can register one at");
+                ui.hyperlink("https://newsapi.org");
+            });
+        });
+    }
 }
 
 impl epi::App for NewsObserverApp {
     fn name(&self) -> &str {
-        "The News Observer"
+        "News Observer"
     }
 
     fn setup(&mut self, ctx: &Context, _frame: &epi::Frame, _storage: Option<&dyn epi::Storage>) {
         self.configure_look(ctx);
-    }
-
-    fn save(&mut self, _storage: &mut dyn epi::Storage) {
     }
 
     fn update(&mut self, ctx: &Context, _frame: &epi::Frame) {
@@ -185,6 +246,9 @@ impl epi::App for NewsObserverApp {
             self.newscard_title_color = NEWSCARD_LIGHT_TITLE_COLOR;
         }
 
+        if !self.config.show_config_window {
+            self.render_config_window(ctx);
+        }
         self.render_controls(ctx);
         CentralPanel::default().show(ctx, |ui| {
             self.render_header(ui);
@@ -198,6 +262,7 @@ impl epi::App for NewsObserverApp {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
+    tracing_subscriber::fmt::init();
     let app = NewsObserverApp::default();
     let native_options = NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
