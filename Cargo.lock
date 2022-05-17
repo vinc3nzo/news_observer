@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "news_observer"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "confy",
  "console_error_panic_hook",

@@ -44,6 +44,7 @@ pub mod news_gui {
     struct ApplicationConfig {
         dark_theme: bool,
         api_key: String,
+        country: Country,
     }
 
     impl Default for ApplicationConfig {
@@ -51,6 +52,7 @@ pub mod news_gui {
             Self {
                 dark_theme: true,
                 api_key: String::new(),
+                country: Country::US,
             }
         }
     }
@@ -82,12 +84,21 @@ pub mod news_gui {
     }
 
     impl NewsObserverApp {
+        fn save_config(&self) {
+            if let Err(e) = confy::store(APPLICATION_NAME, self.config.to_owned()) {
+                tracing::error!("Failed to save config onto the disk: {}", e);
+            } else {
+                tracing::info!("Successfully saved application config onto the disk");
+            }
+        }
+
         fn fetch_news(&mut self) {
             let (news_tx, news_rx) = channel();
-            let api_key = self.config.api_key.to_string();
             self.news_rx = Some(news_rx);
+            let api_key = self.config.api_key.to_string();
+            let country = self.config.country.clone();
             thread::spawn(move || {
-                let a = match get_articles(&api_key) {
+                let a = match get_articles_in_country(&api_key, &country) {
                     Ok(articles) => articles.articles,
                     Err(_e) => vec![],
                 };
@@ -107,10 +118,10 @@ pub mod news_gui {
 
         fn configure_look(&self, ctx: &Context) {
             let mut font_definition = FontDefinitions::default();
-            font_definition.font_data.insert("ComicMono".to_owned(),
-                                             FontData::from_static(include_bytes!("../fonts/ComicMono.ttf")));
+            font_definition.font_data.insert("Inter".to_owned(),
+                                             FontData::from_static(include_bytes!("../fonts/Inter-Regular.ttf")));
             font_definition.families.get_mut(&FontFamily::Proportional).unwrap()
-                .insert(0, "ComicMono".to_owned());
+                .insert(0, "Inter".to_owned());
 
             let mut app_style = Style::default();
             app_style.text_styles.insert(TextStyle::Small, FontId::proportional(SMALL_FONT_SIZE));
@@ -132,6 +143,7 @@ pub mod news_gui {
                         if refresh_button.clicked() {
                             self.fetch_news();
                         }
+
                         let configure_button = ui.button(
                             RichText::new(parse_unicode("1f527").unwrap())
                                 .size(CONTROL_BUTTON_SIZE)
@@ -148,11 +160,20 @@ pub mod news_gui {
                                 .size(CONTROL_BUTTON_SIZE));
                         if theme_button.clicked() {
                             self.config.dark_theme = !self.config.dark_theme;
-                            if let Err(e) = confy::store(APPLICATION_NAME, self.config.to_owned()) {
-                                tracing::error!("Failed to save config onto the disk: {}", e);
-                            } else {
-                                tracing::info!("Successfully saved application config onto the disk");
-                            }
+                            self.save_config();
+                        }
+
+                        let country_button = ui.button(
+                            RichText::new(resolve_country(&self.config.country))
+                                .size(CONTROL_BUTTON_SIZE)
+                        );
+                        if country_button.clicked() {
+                            self.config.country = match &self.config.country {
+                                Country::US => Country::RU,
+                                Country::RU => Country::US,
+                            };
+                            self.fetch_news();
+                            self.save_config();
                         }
                     });
                 });
